@@ -1,0 +1,259 @@
+<html>
+    <head>
+        <style>
+        .outer {
+            display: table;
+            position: absolute;
+            height: 100%;
+            width: 100%;
+        }
+
+        .middle {
+            display: table-cell;
+            vertical-align: middle;
+        }
+
+        .inner {
+            margin-left: auto;
+            margin-right: auto;
+            width: 800;
+        }
+        </style>
+    </head>
+
+    <body>
+        <div class="outer">
+            <div class="middle">
+                <div class="inner" id="container"></div>
+            </div>
+        </div>
+
+        <script src="three.min.js"></script>
+        <script src="dat.gui.min.js"></script>
+        <!--<script src="stats.js"></script>-->
+        <script src="OrbitControls.js"></script>
+
+        <script>
+            function Planet(pos, radius, mass, color) {
+                this.pos = pos.clone();
+                this.radius = radius;
+                this.mass = mass;
+
+                var geometry = new THREE.SphereBufferGeometry(this.radius, 32, 32);
+                var material = new THREE.MeshStandardMaterial({
+                    color: color,
+                    emissive: 0x372323,
+                    roughness: 0.8,
+                    metalness: 0.7
+                });
+
+                this.sphere = new THREE.Mesh(geometry, material);
+                scene.add(this.sphere);
+
+                this.render = function() {
+                    this.sphere.matrix.setPosition(this.pos.clone().divideScalar(render_scale));
+                    this.sphere.matrixAutoUpdate = false;
+                }
+
+                return this;
+            }
+
+            function Projectile(pos, vel, mass, color, fn) {
+                this.start_pos = pos.clone();
+                this.start_vel = vel.clone();
+                this.radius = 2;
+                this.mass = mass;
+                this.pos = pos;
+                this.vel = vel;
+                this.fn = fn;
+
+                this.count = 0;
+
+                var geometry = new THREE.SphereBufferGeometry(this.radius, 32, 32);
+                var material = new THREE.MeshStandardMaterial({
+                    color: 0xaaaa22,
+                    emissive: color,
+                    roughness: 0.8,
+                    metalness: 0.7
+                });
+                this.sphere = new THREE.Mesh(geometry, material);
+                scene.add(this.sphere);
+
+                material = new THREE.LineBasicMaterial({ color: color });
+                geometry = new THREE.BufferGeometry();
+
+                var positions = new Float32Array(MAX_LINES * 3); // 3 vertices per point
+                geometry.addAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+                this.line = new THREE.Line(geometry, material);
+                scene.add(this.line);
+
+                this.arrow = new THREE.ArrowHelper(new THREE.Vector3(0.5, 0, 0.5), new THREE.Vector3(0.5, 0, 0.5), 500, color);
+                scene.add(this.arrow);
+
+                this.reset = function() {
+                    this.pos = this.start_pos.clone();
+                    this.vel = this.start_vel.clone();
+                    this.count = 0;
+                    this.line.geometry.setDrawRange(0, 0);
+                }
+
+                this.update = function(dt) {
+                    this.fn(this, dt);
+                }
+
+                this.render = function() {
+                    this.line.geometry.attributes.position.needsUpdate = true;
+
+                    this.arrow.matrix.compose(this.pos.clone().divideScalar(render_scale), this.arrow.quaternion, new THREE.Vector3(1, 1, 1));
+                    this.arrow.matrixAutoUpdate = false;
+
+                    this.sphere.matrix.setPosition(this.pos.clone().divideScalar(render_scale));
+                    this.sphere.matrixAutoUpdate = false;
+                }
+
+                return this;
+            }
+
+            function integrate_euler(projectile, dt) {
+                var attraction = new THREE.Vector3(0, 0, 0);
+                for (var i = 0; i < planets.length; ++i) {
+                    var planet = planets[i];
+                    var R2 = Math.pow(planet.pos.clone().sub(projectile.pos).length(), 2);
+                    var Mm = projectile.mass * planet.mass;
+                    var G = 6.674e-11;
+                    var F = (G * Mm) / R2;
+                    var dir = planet.pos.clone().sub(projectile.pos).normalize();
+
+                    attraction.add(dir.multiplyScalar(F));
+                }
+
+                projectile.arrow.setDirection(attraction.clone().normalize());
+                projectile.arrow.setLength(attraction.clone().length() / render_scale / projectile.mass * 4e5);
+
+                projectile.vel.add(attraction.clone().divideScalar(projectile.mass).multiplyScalar(dt));
+                projectile.pos.add(projectile.vel.clone().multiplyScalar(dt));
+
+                // render
+
+                var pos = projectile.pos.clone().divideScalar(render_scale);
+                var positions = projectile.line.geometry.attributes.position.array;
+
+                var count = projectile.count;
+
+                positions[count * 3] = pos.x
+                positions[count * 3 + 1] = pos.y
+                positions[count * 3 + 2] = pos.z
+
+                projectile.line.geometry.setDrawRange(0, projectile.count++);
+            }
+
+            var container, camera, scene, group, controls;
+            var gui = new dat.GUI({ autoPlace: true });
+
+            var options = {
+                euler: true,
+                euler_small: true,
+                other: false,
+                delta: 1
+            };
+
+            var euler_controller = gui.add(options, 'euler');
+            euler_controller.onChange(function(val) {
+                euler.sphere.visible = val;
+                euler.line.visible = val;
+            });
+            var euler_small_controller = gui.add(options, 'euler_small');
+            euler_small_controller.onChange(function(val) {
+                euler_small.sphere.visible = val;
+                euler_small.line.visible = val;
+            });
+
+            gui.add(options, 'other');
+            gui.add(options, 'delta');
+
+            var obj = { reset: function() {
+                euler.reset();
+                euler_small.reset();
+            }};
+            gui.add(obj,'reset');
+
+            var render_scale = 1e4, MAX_LINES = 50000 * 3;
+
+            var START_POS = new THREE.Vector3(-24e5, 0.2e5, -4e5), START_VEL = new THREE.Vector3(0.3e4, 0.1e4, -0.15e4);
+            START_VEL.multiplyScalar(0.5);
+
+            var planets = [];
+            var euler, euler_small, other;
+
+            setInterval(function() {
+                euler.update(options.delta);
+                euler_small.update(options.delta);
+            }, 25);
+
+
+
+            init();
+            animate();
+
+            function init() {
+                var width = 800,
+                    height = 600;
+
+                container = document.getElementById('container');
+
+                camera = new THREE.PerspectiveCamera(60, width / height, 1, 2000);
+                camera.position.z = 475;
+
+                scene = new THREE.Scene();
+                group = new THREE.Group();
+
+                var grid = new THREE.PolarGridHelper(500, 10, 5);
+                scene.add(grid);
+
+                var light = new THREE.PointLight(0xffffff, 1, 0);
+                light.position.set(200, 150, 170);
+                scene.add(light);
+
+                planets.push(new Planet(new THREE.Vector3(0, 0, 0), 25.0, 7.342e22, 0xaaaa22));
+                planets.push(new Planet(new THREE.Vector3(5e5, 5.2e5, 4e5), 16.0, 4.723e22, 0x22aa22));
+
+                euler = new Projectile(START_POS, START_VEL, 2e13, 0x88eaea, function(proj, dt) { integrate_euler(proj, dt); });
+                euler_small = new Projectile(START_POS, START_VEL, 2e13, 0xea88ea, function(proj, dt) { for (var i = 0; i < 16; ++i) { integrate_euler(proj, dt/16); } });
+
+                renderer = new THREE.WebGLRenderer();
+                renderer.setClearColor(0x343434);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.setSize(width, height);
+
+                controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.9;
+
+                container.appendChild(renderer.domElement);
+            }
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                render();
+            }
+
+            function render() {
+                for (var i = 0; i < planets.length; ++i) {
+                    planets[i].render();
+                }
+
+                euler.render();
+                euler_small.render();
+                //camera.position.x += (mouseX - camera.position.x) * 0.05;
+                //camera.position.y += (- mouseY - camera.position.y) * 0.05;
+                camera.lookAt(scene.position);
+
+                //group.rotation.y -= 0.005;
+
+                renderer.render(scene, camera);
+            }
+        </script>
+    </body>
+</html>
