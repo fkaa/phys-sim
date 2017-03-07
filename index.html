@@ -79,7 +79,7 @@
                 this.sphere = new THREE.Mesh(geometry, material);
                 scene.add(this.sphere);
 
-                material = new THREE.LineBasicMaterial({ color: color });
+                material = new THREE.LineBasicMaterial({ color: color, linewidth: 2 });
                 geometry = new THREE.BufferGeometry();
 
                 var positions = new Float32Array(MAX_LINES * 3); // 3 vertices per point
@@ -162,11 +162,13 @@
             euler_controller.onChange(function(val) {
                 euler.sphere.visible = val;
                 euler.line.visible = val;
+                euler.arrow.visible = val;
             });
             var euler_small_controller = gui.add(options, 'euler_small');
             euler_small_controller.onChange(function(val) {
                 euler_small.sphere.visible = val;
                 euler_small.line.visible = val;
+                euler_small.arrow.visible = val;
             });
 
             gui.add(options, 'other');
