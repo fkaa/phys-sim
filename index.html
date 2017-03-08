@@ -76,7 +76,7 @@
                 this.line = new THREE.Line(geometry, material);
                 scene.add(this.line);
 
-                this.arrow = new THREE.ArrowHelper(new THREE.Vector3(0.5, 0, 0.5), new THREE.Vector3(0.5, 0, 0.5), 500, color);
+                this.arrow = new THREE.ArrowHelper(new THREE.Vector3(0.5, 0, 0.5), new THREE.Vector3(0.5, 0, 0.5), 50, color);
                 scene.add(this.arrow);
 
                 this.reset = function() {
@@ -105,7 +105,7 @@
 
             function integrate_euler(projectile, dt) {
                 var attraction = new THREE.Vector3(0, 0, 0);
-                for (var i = 0; i < planets.length; ++i) {
+                for (var i = 0; i < options.planets; ++i) {
                     var planet = planets[i];
                     var R2 = Math.pow(planet.pos.clone().sub(projectile.pos).length(), 2);
                     var Mm = projectile.mass * planet.mass;
@@ -113,13 +113,13 @@
                     var F = (G * Mm) / R2;
                     var dir = planet.pos.clone().sub(projectile.pos).normalize();
 
-                    attraction.add(dir.multiplyScalar(F));
+                    attraction.add(dir.multiplyScalar(F).divideScalar(projectile.mass));
                 }
 
                 projectile.arrow.setDirection(attraction.clone().normalize());
                 projectile.arrow.setLength(attraction.clone().length() / render_scale / projectile.mass * 4e5);
 
-                projectile.vel.add(attraction.clone().divideScalar(projectile.mass).multiplyScalar(dt));
+                projectile.vel.add(attraction.clone().multiplyScalar(dt));
                 projectile.pos.add(projectile.vel.clone().multiplyScalar(dt));
 
                 // render
@@ -142,8 +142,8 @@
             var options = {
                 euler: true,
                 euler_small: true,
-                other: false,
-                delta: 1
+                delta: 1.2,
+                planets: 1
             };
 
             var euler_controller = gui.add(options, 'euler');
@@ -159,8 +159,13 @@
                 euler_small.arrow.visible = val;
             });
 
-            gui.add(options, 'other');
             gui.add(options, 'delta');
+            var planet_controller = gui.add(options, 'planets').min(1).max(2).step(1);
+            planet_controller.onChange(function(val) {
+                for (var i = 0; i < planets.length; ++i) {
+                    planets[i].sphere.visible = (i < val)
+                }
+            })
 
             var obj = { reset: function() {
                 euler.reset();
@@ -236,7 +241,7 @@
             }
 
             function render() {
-                for (var i = 0; i < planets.length; ++i) {
+                for (var i = 0; i < options.planets; ++i) {
                     planets[i].render();
                 }
 
